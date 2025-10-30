@@ -96,33 +96,10 @@ def feature_engineering_celestin(
 
     print(f"[SELECT] Kept top-{len(corr_keep_cols)} features by |Pearson r| with target (requested {top_k_corr}).")
 
-    #remove highly inter-correlated features (|r| >= corr_feature_max)
-    if len(corr_keep_cols) > 1:
-        cm = X_train_corr.corr().abs()
-        ordered = list(corr_s.loc[corr_keep_cols].index)  # already sorted desc by |corr to y|
-        kept, dropped = [], []
-        for c in ordered:
-            if not kept:
-                kept.append(c)
-            else:
-                # check correlation with already kept features
-                too_corr = any(cm.loc[c, k] >= corr_feature_max for k in kept if c != k)
-                if too_corr:
-                    dropped.append(c)
-                else:
-                    kept.append(c)
 
-        X_train_decorr = X_train_corr[kept].copy()
-        X_test_decorr  = X_test_corr[kept].copy()
-
-
-        print(f"[DE-CORR] Removed {len(dropped)} highly inter-correlated features "
-                f"(threshold |r| ≥ {corr_feature_max}).")
-
-    else:
-        X_train_decorr = X_train_corr
-        X_test_decorr  = X_test_corr
-        dropped = []
+    X_train_decorr = X_train_corr
+    X_test_decorr  = X_test_corr
+    dropped = []
 
     # RandomForest-based selection, keep top 'rf_keep' features
     rf = RandomForestRegressor(

@@ -28,7 +28,6 @@ from sklearn.ensemble import RandomForestRegressor
 # Project specific imports
 from utils import outliers as outliers
 from utils import features as features
-from utils import bagging as bagging
 
 SEED = 25
 np.random.seed(SEED)
@@ -44,7 +43,7 @@ def main() -> None:
 
     X_train_in_i, y_train_in_i, X_test_tmp = outliers.remove_outliers_IF(
         X_train=X_train, y_train=y_train, X_test=X_test,
-        contamination=0.0045,
+        contamination=0.045,
     )
 
     final_cols = features.feature_engineering_celestin(
@@ -65,22 +64,22 @@ def main() -> None:
     X_train_scaled = (X_train_feat - mean) / std
     X_test_scaled = (X_test_feat - mean) / std
 
-    #imputer = KNNImputer(n_neighbors=1, weights='distance')
-    imputer = IterativeImputer(estimator=SVR(kernel='rbf', C=60, gamma="scale"), initial_strategy='median', max_iter=20)
+    imputer = KNNImputer(n_neighbors=10, weights='distance')
+    #imputer = IterativeImputer(estimator=SVR(kernel='rbf', C=52, gamma="scale"), initial_strategy='median', max_iter=20)
     X_train_imputed = imputer.fit_transform(X_train_scaled)
     X_test_imputed = imputer.transform(X_test_scaled)
 
     X_train_fe_i = pd.DataFrame(X_train_imputed, columns=X_train_feat.columns)
     X_test_fe_i = pd.DataFrame(X_test_imputed, columns=X_test_feat.columns)
 
-    kf = KFold(n_splits=15, shuffle=True, random_state=SEED)
+    kf = KFold(n_splits=10, shuffle=True, random_state=SEED)
 
     fold_scores = []
     for tr_idx, te_idx in kf.split(X_train_fe_i):
         X_tr, X_te = X_train_fe_i.iloc[tr_idx], X_train_fe_i.iloc[te_idx]
         y_tr, y_te = y_train_in_i.iloc[tr_idx], y_train_in_i.iloc[te_idx]
 
-        model = SVR(kernel='rbf', C=60, gamma="scale")
+        model = SVR(kernel='rbf', C=52, gamma="scale")
         #model = GradientBoostingRegressor(n_estimators=200)
         #model = RandomForestRegressor()
         model.fit(X_tr, y_tr)
