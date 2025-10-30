@@ -17,6 +17,7 @@ from sklearn.ensemble import IsolationForest, RandomForestRegressor
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.decomposition import PCA
 
 SEED = 25
 np.random.seed(SEED)
@@ -37,25 +38,13 @@ def remove_outliers_IF(
     scaler = StandardScaler(with_mean=True, with_std=True)
     Xtr_std = scaler.fit_transform(Xtr_imp)
 
-    # 2D latent embedding (PLS)
-    Z = None
-    pls = PLSRegression(n_components=2)
-    Z, _ = pls.fit_transform(Xtr_std, y_train.values.reshape(-1, 1))
+    # 2D latent embedding (PCA)
+    pca = PCA(n_components=2, random_state=SEED)
+    X_proj = pca.fit_transform(Xtr_std)
 
-    #Isolation Forest on 2D space
-    iso = IsolationForest(
-        contamination=contamination,
-        random_state=SEED,
-        n_jobs=-1
-    )
+    # Isolation forest
+    iso = IsolationForest(contamination=contamination, random_state=SEED)
+    mask = iso.fit_predict(X_proj) == 1
 
-    pred = iso.fit_predict(Z)  # 1=inlier, -1=outlier
-
-    flag_outlier = (pred == -1)
-
-    mask_inliers = pd.Series(~flag_outlier, index=X_train.index)
-
-    X_train_inliers = X_train[mask_inliers].copy()
-    y_train_inliers = y_train[mask_inliers].copy()
-
-    return X_train_inliers, y_train_inliers, Xte_imp 
+    X_train, y_train = X_train[mask], y_train[mask]
+    return X_train, y_train, X_test

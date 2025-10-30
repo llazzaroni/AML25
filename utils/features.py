@@ -17,6 +17,7 @@ from sklearn.ensemble import IsolationForest, RandomForestRegressor
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.feature_selection import mutual_info_regression
 
 SEED = 25
 np.random.seed(SEED)
@@ -47,36 +48,31 @@ def feature_engineering_celestin(
 
     #median imputation
     med = X_train.median(axis=0)
-    X_train_imp = X_train.fillna(med)
-    X_test_imp  = X_test.fillna(med)
+    X_train_vt = X_train.fillna(med)
+    X_test_vt  = X_test.fillna(med)
+    vt_cols = X_train.columns
+    
+    mean = X_train_vt.mean()
+    std = X_train_vt.std(ddof=0)
 
-    miss_before = int(X_train.isna().sum().sum())
-    print(f"[IMPUTE] Median imputation. Missing before: {miss_before} -> after: 0")
+    X_train_scaled = (X_train_vt - mean) / std
+    X_test_scaled = (X_test_vt - mean) / std
 
-    # standardize 
-    scaler = StandardScaler(with_mean=True, with_std=True)
-    X_train_std = pd.DataFrame(
-        scaler.fit_transform(X_train_imp), columns=X_train.columns, index=X_train.index
+    imputer = KNNImputer(n_neighbors=1, weights='distance')
+    #imputer = IterativeImputer(estimator=SVR(kernel='rbf', C=52, gamma="scale"), initial_strategy='median', max_iter=10)
+    X_train_vt = pd.DataFrame(
+        imputer.fit_transform(X_train_scaled),
+        columns=vt_cols, index=X_train.index
     )
-    X_test_std = pd.DataFrame(
-        scaler.transform(X_test_imp), columns=X_test.columns, index=X_test.index
+    X_test_vt = pd.DataFrame(
+        imputer.transform(X_test_scaled),
+        columns=vt_cols, index=X_test.index
     )
+    print("First imputer is done")
 
-    print("[SCALE] StandardScaler applied (fit on train).")
-
-    #Remove low-variance features
-    vt = VarianceThreshold(threshold=low_var_threshold)
-    X_train_vt = vt.fit_transform(X_train_std)
-    kept_idx_vt = vt.get_support(indices=True)
-    vt_cols = X_train_std.columns[kept_idx_vt]
-    X_train_vt = pd.DataFrame(X_train_vt, columns=vt_cols, index=X_train_std.index)
-    X_test_vt  = pd.DataFrame(vt.transform(X_test_std), columns=vt_cols, index=X_test_std.index)
-
-    dropped_zero_var = [c for c in X_train_std.columns if c not in vt_cols]
-
-    print(f"[FILTER] low-variance features: {len(dropped_zero_var)}")
 
     #Top-K by absolute Pearson correlation with target (on VT-filtered set)
+    '''''''''
     corrs = {}
     yv = y_train
     for c in vt_cols:
@@ -93,13 +89,20 @@ def feature_engineering_celestin(
 
     X_train_corr = X_train_vt[corr_keep_cols].copy()
     X_test_corr  = X_test_vt[corr_keep_cols].copy()
+    '''
 
-    print(f"[SELECT] Kept top-{len(corr_keep_cols)} features by |Pearson r| with target (requested {top_k_corr}).")
+    #pearson = X_train_vt.corrwith(y_train, method='pearson').abs()
+    spearman = X_train_vt.corrwith(y_train, method='spearman').abs()
+    #mi = pd.Series(mutual_info_regression(X_train_vt, y_train, random_state=SEED), index=X_train_vt.columns)
+
+    #combined = (pearson.rank() + spearman.rank()) / 2
+    top_features = spearman.nlargest(top_k_corr).index
+
+    #print(f"[SELECT] Kept top-{len(corr_keep_cols)} features by |Pearson r| with target (requested {top_k_corr}).")
 
 
-    X_train_decorr = X_train_corr
-    X_test_decorr  = X_test_corr
-    dropped = []
+    X_train_decorr = X_train_vt.loc[:,top_features]
+    X_test_decorr  = X_test_vt.loc[:,top_features]
 
     # RandomForest-based selection, keep top 'rf_keep' features
     rf = RandomForestRegressor(
@@ -122,8 +125,8 @@ def feature_engineering_celestin(
     X_test_final  = X_test_decorr[final_cols].copy()
 
 
-    print(f"[RF] RandomForest feature selection:")
-    print(f"     - kept {len(final_cols)} features (requested {rf_keep})")
-    print(f"     - top-10 importances:\n{importances.head(10)}")
+    #print(f"[RF] RandomForest feature selection:")
+    #print(f"     - kept {len(final_cols)} features (requested {rf_keep})")
+    #print(f"     - top-10 importances:\n{importances.head(10)}")
     
     return final_cols

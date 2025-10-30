@@ -17,7 +17,7 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.decomposition import FastICA
 from sklearn.ensemble import IsolationForest, RandomForestRegressor
 from sklearn.feature_selection import VarianceThreshold
-from sklearn.svm import SVR
+from sklearn.svm import SVR, NuSVR
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.ensemble import GradientBoostingRegressor
 
@@ -37,15 +37,24 @@ def main() -> None:
     y_train = y_train_df.iloc[:, 1:]
     X_test = X_test_df.iloc[:, 1:]
 
+    print(X_train.shape[1])
+    eps = 1e-7
+    mean = X_train.mean()
+    std = X_train.std(ddof=0)
+    cols = std[std > eps].index
+    X_train = X_train.loc[:,cols]
+    X_test = X_test.loc[:,cols]
+    print(X_train.shape[1])
+
     X_train_in_i, y_train_in_i, X_test_tmp = outliers.remove_outliers_IF(
         X_train=X_train, y_train=y_train, X_test=X_test,
-        contamination=0.045,
+        contamination=0.047,
     )
 
     final_cols = features.feature_engineering_celestin(
         X_train=X_train_in_i, y_train=y_train_in_i, X_test=X_test_tmp,
-        top_k_corr=200,
-        rf_keep=167,
+        top_k_corr=202,
+        rf_keep=173,
     )
 
     # Use the knn imputer instead of the median
@@ -61,8 +70,8 @@ def main() -> None:
     X_test_scaled = (X_test_feat - mean) / std
 
     # To achieve the best result, use the IterativeImputer with SVR, C=54, initial_strategy='median'
-    #imputer = KNNImputer(n_neighbors=1, weights='distance')
-    imputer = IterativeImputer(estimator=SVR(kernel='rbf', C=60, gamma="scale"), initial_strategy='median', max_iter=20)
+    imputer = KNNImputer(n_neighbors=2, weights='distance')
+    #imputer = IterativeImputer(estimator=NuSVR(kernel='rbf', C=52, gamma="scale"), initial_strategy='median', max_iter=20)
     X_train_imputed = imputer.fit_transform(X_train_scaled)
     X_test_imputed = imputer.transform(X_test_scaled)
 
@@ -70,7 +79,7 @@ def main() -> None:
     X_test_fe_i = pd.DataFrame(X_test_imputed, columns=X_test_feat.columns)
 
     
-    model = SVR(kernel='rbf', C=52, gamma="scale")
+    model = NuSVR(kernel='rbf', C=55, gamma="scale")
     model.fit(X_train_fe_i, y_train_in_i)
     y_hat = model.predict(X_test_fe_i)
 
