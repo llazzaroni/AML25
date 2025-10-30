@@ -45,6 +45,6 @@ def remove_outliers_IF(
     # Isolation forest
     iso = IsolationForest(contamination=contamination, random_state=SEED)
     mask = iso.fit_predict(X_proj) == 1
-
+    
     X_train, y_train = X_train[mask], y_train[mask]
     return X_train, y_train, X_test

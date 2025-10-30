@@ -18,8 +18,19 @@ from sklearn.decomposition import FastICA
 from sklearn.ensemble import IsolationForest, RandomForestRegressor
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.svm import SVR, NuSVR
+from sklearn.neural_network import MLPRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.ensemble import AdaBoostRegressor
+from sklearn.ensemble import BaggingRegressor, VotingRegressor, GradientBoostingRegressor
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.tree import DecisionTreeRegressor, ExtraTreeRegressor
+from sklearn.gaussian_process import GaussianProcessRegressor
+import sklearn.gaussian_process.kernels as kernels
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import StackingRegressor
+
+import lightgbm as lgb
 
 # Project specific imports
 from utils import outliers as outliers
@@ -79,7 +90,23 @@ def main() -> None:
     X_test_fe_i = pd.DataFrame(X_test_imputed, columns=X_test_feat.columns)
 
     
-    model = NuSVR(kernel='rbf', C=55, gamma="scale")
+    kernel = kernels.ConstantKernel(1.0, (1e-3, 1e3)) \
+        * kernels.RationalQuadratic(length_scale=1.0, alpha=1.0) \
+        + kernels.WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e1))
+
+    gpr = GaussianProcessRegressor(
+        kernel=kernel,
+        alpha=0.0,
+        normalize_y=True,
+        n_restarts_optimizer=8,
+        random_state=SEED
+    )
+    model = StackingRegressor(
+        estimators=[("svr", NuSVR(C=55, gamma="scale")),
+                ("hgb", HistGradientBoostingRegressor(random_state=SEED)),
+                ("gp", gpr)],
+        final_estimator=LinearRegression(n_jobs=None)
+    )
     model.fit(X_train_fe_i, y_train_in_i)
     y_hat = model.predict(X_test_fe_i)
 

@@ -29,6 +29,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 import sklearn.gaussian_process.kernels as kernels
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.ensemble import StackingRegressor
+from sklearn.pipeline import Pipeline
 
 import lightgbm as lgb
 
@@ -92,11 +93,6 @@ def main() -> None:
                 X_train_feat = X_train_in_i[final_cols]
                 X_test_feat = X_test_tmp[final_cols]
 
-                mean = X_train_feat.mean()
-                std = X_train_feat.std(ddof=0)
-
-                X_train_scaled = (X_train_feat - mean) / std
-                X_test_scaled = (X_test_feat - mean) / std
 
                 '''''''''
 
@@ -111,8 +107,8 @@ def main() -> None:
                 X_train_fe_i = pd.DataFrame(X_train_imputed, columns=X_train_feat.columns)
                 X_test_fe_i = pd.DataFrame(X_test_imputed, columns=X_test_feat.columns)
                 '''
-                X_train_fe_i = pd.DataFrame(X_train_scaled, columns=X_train_feat.columns)
-                X_test_fe_i = pd.DataFrame(X_test_scaled, columns=X_test_feat.columns)
+                X_train_fe_i = pd.DataFrame(X_train_feat, columns=X_train_feat.columns)
+                X_test_fe_i = pd.DataFrame(X_test_feat, columns=X_test_feat.columns)
                 
 
                 kf = KFold(n_splits=10, shuffle=True, random_state=SEED)
@@ -122,46 +118,20 @@ def main() -> None:
                     X_tr, X_te = X_train_fe_i.iloc[tr_idx], X_train_fe_i.iloc[te_idx]
                     y_tr, y_te = y_train_in_i.iloc[tr_idx], y_train_in_i.iloc[te_idx]
 
-                    imputer = KNNImputer(n_neighbors=2, weights='distance')
-                    #imputer = IterativeImputer(initial_strategy='median', max_iter=30)
-                    X_train_imputed = imputer.fit_transform(X_tr)
-                    X_test_imputed = imputer.transform(X_te)
-                    #print("second imputer is done")
+                    svr_branch = Pipeline([
+                        ("scaler", StandardScaler()),
+                        ("imputer", KNNImputer(n_neighbors=10, weights="distance")),
+                        ("svr", SVR(C=50, gamma="scale"))
+                    ])
+                    hgb_branch = HistGradientBoostingRegressor(random_state=SEED)
 
-
-                    #model = SVR(kernel='rbf', C=52, gamma="scale")
-                    model = NuSVR(nu=0.5, kernel='rbf', C=55, gamma="auto")
-                    #model = AdaBoostRegressor(estimator=NuSVR(nu=0.5, kernel='rbf', C=52, gamma="scale"))
-                    #model2 = BaggingRegressor(estimator=NuSVR(nu=0.5, kernel='rbf', C=52, gamma="scale"))
-                    #model3 = NuSVR(nu=0.5, kernel='rbf', C=52, gamma="scale")
-                    #model = GradientBoostingRegressor(estimator=NuSVR(nu=0.5, kernel='rbf', C=52, gamma="scale"))
-                    #kernel1 = kernels.RBF()
-                    #kernel2 = kernels.Matern()
-                    #kernel3 = kernels.RationalQuadratic()
-                    #model = GaussianProcessRegressor(kernel=kernel2)
-                    #model = DecisionTreeRegressor(criterion='absolute_error')
-                    #model = GradientBoostingRegressor(n_estimators=200)
-                    #model = RandomForestRegressor()
-                    kernel = kernels.ConstantKernel(1.0, (1e-3, 1e3)) \
-                        * kernels.RationalQuadratic(length_scale=1.0, alpha=1.0) \
-                        + kernels.WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e1))
-
-                    gpr = GaussianProcessRegressor(
-                        kernel=kernel,
-                        alpha=0.0,
-                        normalize_y=True,
-                        n_restarts_optimizer=8,
-                        random_state=SEED
-                    )
                     model = StackingRegressor(
-                        estimators=[("svr", NuSVR(C=55, gamma="scale")),
-                                ("hgb", HistGradientBoostingRegressor(random_state=SEED)),
-                                ("gp", gpr)],
-                        final_estimator=LinearRegression(n_jobs=None)
+                        estimators=[("svr", svr_branch), ("hgb", hgb_branch)],
+                        final_estimator=LinearRegression(),
+                        n_jobs=-1
                     )
-                    
-                    model.fit(X_train_imputed, y_tr)
-                    y_hat = model.predict(X_test_imputed)
+                    model.fit(X_tr, y_tr)
+                    y_hat = model.predict(X_te)
                     fold_scores.append(r2_score(y_te, y_hat))
                     print("end of split")
 
