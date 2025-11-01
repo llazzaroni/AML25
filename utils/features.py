@@ -28,7 +28,7 @@ from sklearn.impute import IterativeImputer
 from sklearn.linear_model import BayesianRidge
 
 
-def feature_engineering_celestin(
+def feature_engineering_spearman(
     X_train, y_train, X_test,
     top_k_corr=200,                  #numbers of features kept by correlation with target
     rf_keep=200,                     # numbers of features kept by RF importance
@@ -68,28 +68,6 @@ def feature_engineering_celestin(
         imputer.transform(X_test_scaled),
         columns=vt_cols, index=X_test.index
     )
-    print("First imputer is done")
-
-
-    #Top-K by absolute Pearson correlation with target (on VT-filtered set)
-    '''''''''
-    corrs = {}
-    yv = y_train
-    for c in vt_cols:
-        x = X_train_vt[c]
-        if x.std() == 0:
-            corrs[c] = 0.0
-            continue
-        try:
-            corrs[c] = float(np.corrcoef(x, yv)[0, 1])
-        except Exception:
-            corrs[c] = 0.0
-    corr_s = pd.Series(corrs).abs().sort_values(ascending=False)
-    corr_keep_cols = corr_s.head(min(top_k_corr, len(corr_s))).index.tolist()
-
-    X_train_corr = X_train_vt[corr_keep_cols].copy()
-    X_test_corr  = X_test_vt[corr_keep_cols].copy()
-    '''
 
     #pearson = X_train_vt.corrwith(y_train, method='pearson').abs()
     spearman = X_train_vt.corrwith(y_train, method='spearman').abs()
@@ -120,13 +98,5 @@ def feature_engineering_celestin(
         final_cols = importances.index.tolist()
     else:
         final_cols = importances.head(min(rf_keep, len(importances))).index.tolist()
-
-    X_train_final = X_train_decorr[final_cols].copy()
-    X_test_final  = X_test_decorr[final_cols].copy()
-
-
-    #print(f"[RF] RandomForest feature selection:")
-    #print(f"     - kept {len(final_cols)} features (requested {rf_keep})")
-    #print(f"     - top-10 importances:\n{importances.head(10)}")
     
     return final_cols

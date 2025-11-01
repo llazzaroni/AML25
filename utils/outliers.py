@@ -26,7 +26,7 @@ def remove_outliers_IF(
     X_train,
     y_train,
     X_test,
-    contamination=0.8,     
+    contamination=0.045,     
 ):
     # Median imputation
     med = X_train.median(axis=0)

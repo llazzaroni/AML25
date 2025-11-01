@@ -25,7 +25,11 @@ from utils import features as features
 from utils import preprocessing as preprocessing
 
 SEED = 25
-np.random.seed(SEED)
+
+# Simple column selector that keeps a branch-specific feature list
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.compose import ColumnTransformer
+
 
 class LabelColumnSelector(BaseEstimator, TransformerMixin):
     def __init__(self, columns=None):
@@ -44,7 +48,6 @@ class LabelColumnSelector(BaseEstimator, TransformerMixin):
         return X.loc[:, self.columns_]
 
 def main() -> None:
-
     X_train_df = pd.read_csv('data/X_train.csv', skiprows=1, header=None)
     y_train_df = pd.read_csv('data/y_train.csv', skiprows=1, header=None)
     X_test_df = pd.read_csv('data/X_test.csv', skiprows=1, header=None)
@@ -139,16 +142,30 @@ def main() -> None:
         ))
     ])
 
-    model = StackingRegressor(
-        estimators=[("svr", SVR_branch), ("hgb", HGBR_branch), ("etr", ETR_branch), ("abr", ABR_branch)],
-        final_estimator=LinearRegression(n_jobs=None)
-    )
+    kf = KFold(n_splits=10, shuffle=True, random_state=SEED)
+    fold_scores = []
+    for tr_idx, te_idx in kf.split(X_train):
+        X_tr, X_te = X_train.iloc[tr_idx], X_train.iloc[te_idx]
+        y_tr, y_te = y_train.iloc[tr_idx], y_train.iloc[te_idx]
 
-    model.fit(X_train, y_train)
-    y_hat = model.predict(X_test)
+        model = StackingRegressor(
+            estimators=[("svr", SVR_branch), ("hgb", HGBR_branch), ("etr", ETR_branch), ("abr", ABR_branch), ("gpr", GPR_branch)],
+            final_estimator=LinearRegression(n_jobs=None)
+        )
 
-    table = pd.DataFrame({'id': np.arange(0, y_hat.shape[0]), 'y': y_hat.flatten()})
-    table.to_csv('submission2.csv', index=False)
+        # Fit the pipeline
+        model.fit(X_tr, y_tr.values.ravel())
+        y_hat = model.predict(X_te)
+        fold_scores.append(r2_score(y_te, y_hat))
+        print("end of split")
+
+    mean_r2 = float(np.mean(fold_scores))
+    std_r2  = float(np.std(fold_scores, ddof=1))
+
+    print(mean_r2, std_r2)
+    print("######")
+
+
 
 if __name__ == "__main__":
     main()
