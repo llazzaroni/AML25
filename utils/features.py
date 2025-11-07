@@ -29,7 +29,7 @@ from sklearn.linear_model import BayesianRidge
 
 
 def feature_engineering_spearman(
-    X_train, y_train, X_test,
+    X_train, y_train,
     top_k_corr=200,                  #numbers of features kept by correlation with target
     rf_keep=200,                     # numbers of features kept by RF importance
     rf_n_estimators=1000,
@@ -42,31 +42,24 @@ def feature_engineering_spearman(
 ):
 
     X_train = pd.DataFrame(X_train).copy()
-    X_test  = pd.DataFrame(X_test).copy()
     y_train = pd.Series(np.asarray(y_train).reshape(-1), index=X_train.index)
 
 
     #median imputation
     med = X_train.median(axis=0)
     X_train_vt = X_train.fillna(med)
-    X_test_vt  = X_test.fillna(med)
     vt_cols = X_train.columns
     
     mean = X_train_vt.mean()
     std = X_train_vt.std(ddof=0)
 
     X_train_scaled = (X_train_vt - mean) / std
-    X_test_scaled = (X_test_vt - mean) / std
 
     imputer = KNNImputer(n_neighbors=1, weights='distance')
     #imputer = IterativeImputer(estimator=SVR(kernel='rbf', C=52, gamma="scale"), initial_strategy='median', max_iter=10)
     X_train_vt = pd.DataFrame(
         imputer.fit_transform(X_train_scaled),
         columns=vt_cols, index=X_train.index
-    )
-    X_test_vt = pd.DataFrame(
-        imputer.transform(X_test_scaled),
-        columns=vt_cols, index=X_test.index
     )
 
     #pearson = X_train_vt.corrwith(y_train, method='pearson').abs()
@@ -80,7 +73,6 @@ def feature_engineering_spearman(
 
 
     X_train_decorr = X_train_vt.loc[:,top_features]
-    X_test_decorr  = X_test_vt.loc[:,top_features]
 
     # RandomForest-based selection, keep top 'rf_keep' features
     rf = RandomForestRegressor(

@@ -32,13 +32,17 @@ from sklearn.compose import ColumnTransformer
 
 
 class LabelColumnSelector(BaseEstimator, TransformerMixin):
-    def __init__(self, columns=None):
-        # DO NOT coerce here — keep exactly what the user passed
-        self.columns = columns
+    def __init__(self, top_k_corr, rf_keep):
+        self.top_k_corr = top_k_corr
+        self.rf_keep = rf_keep
 
     def fit(self, X, y=None):
         # Create learned attributes here
-        self.columns_ = list(self.columns)
+        self.columns_ = list(features.feature_engineering_spearman(X_train = X,
+                                                                   y_train = y,
+                                                                   top_k_corr = self.top_k_corr,
+                                                                   rf_keep = self.rf_keep
+        ))
         missing = [c for c in self.columns_ if c not in X.columns]
         if missing:
             raise ValueError(f"Missing columns in X (first few): {missing[:5]}")
@@ -54,44 +58,26 @@ def main() -> None:
 
     X_train, y_train, X_test = preprocessing.preprocess(X_train_df, X_test_df, y_train_df)
 
-    final_cols_SVR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=202,
-        rf_keep=173,
-    )
-
     SVR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_SVR)),
+        ("sel", LabelColumnSelector(top_k_corr=202, rf_keep=173)),
         ("scale", StandardScaler()),
         ("impute", KNNImputer(n_neighbors=2, weights='distance')),
         ("model", NuSVR(nu=0.5, kernel='rbf', C=55, gamma="auto"))
     ])
 
-    final_cols_HGBR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=168,
-    )
-
     HGBR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_HGBR)),
+        ("sel", LabelColumnSelector(top_k_corr=197, rf_keep=168)),
         ("scale", StandardScaler()),
         ("impute", KNNImputer(n_neighbors=2, weights='distance')),
         ("model", HistGradientBoostingRegressor())
     ])
-
-    final_cols_GPR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=168,
-    )
 
     kernel = ConstantKernel(1.0, (1e-3, 1e3)) \
             * RationalQuadratic(length_scale=1.0, alpha=1.0) \
             + WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e1))
 
     GPR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_GPR)),
+        ("sel", LabelColumnSelector(top_k_corr=197, rf_keep=168)),
         ("scale", RobustScaler()),
         ("impute1", KNNImputer(n_neighbors=2, weights="distance")),
         ("gpr", GaussianProcessRegressor(
@@ -103,14 +89,8 @@ def main() -> None:
         ))
     ])
 
-    final_cols_ABR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=160,
-    )
-
     ABR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_ABR)),
+        ("sel", LabelColumnSelector(top_k_corr=197, rf_keep=160)),
         ("scale", StandardScaler()),
         ("imp", KNNImputer(n_neighbors=2, weights="distance")),
         ("model", AdaBoostRegressor(
@@ -126,14 +106,8 @@ def main() -> None:
         ))
     ])
 
-    final_cols_ETR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=160,
-    )
-
     ETR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_ETR)),
+        ("sel", LabelColumnSelector(top_k_corr=197, rf_keep=160)),
         ("scale", StandardScaler()),
         ("imp", KNNImputer(n_neighbors=2, weights="distance")),
         ("model", ExtraTreesRegressor(
@@ -148,9 +122,13 @@ def main() -> None:
         X_tr, X_te = X_train.iloc[tr_idx], X_train.iloc[te_idx]
         y_tr, y_te = y_train.iloc[tr_idx], y_train.iloc[te_idx]
 
+        #model = StackingRegressor(
+        #    estimators=[("svr", SVR_branch), ("hgb", HGBR_branch), ("etr", ETR_branch), ("abr", ABR_branch), ("gpr", GPR_branch)],
+        #    final_estimator=LinearRegression(n_jobs=None)
+        #)
         model = StackingRegressor(
-            estimators=[("svr", SVR_branch), ("hgb", HGBR_branch), ("etr", ETR_branch), ("abr", ABR_branch), ("gpr", GPR_branch)],
-            final_estimator=LinearRegression(n_jobs=None)
+            estimators = [("svr", SVR_branch), ("hgb", HGBR_branch)],
+            final_estimator = LinearRegression(n_jobs=None)
         )
 
         # Fit the pipeline
