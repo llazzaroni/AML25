@@ -43,7 +43,7 @@ def main() -> None:
     for top_k_corr in spaced_ints(197, 197, 1):
         for rf_keep in spaced_ints(160, 160, 1):
             final_cols_HGBR = features.feature_engineering_spearman(
-                X_train=X_train, y_train=y_train, X_test=X_test,
+                X_train=X_train, y_train=y_train,
                 top_k_corr=top_k_corr,
                 rf_keep=rf_keep,
             )

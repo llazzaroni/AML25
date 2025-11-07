@@ -34,7 +34,7 @@ def main() -> None:
     X_train, y_train, X_test = preprocessing.preprocess(X_train_df, X_test_df, y_train_df)
 
     final_cols_SVR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
+        X_train=X_train, y_train=y_train,
         top_k_corr=202,
         rf_keep=173,
     )
