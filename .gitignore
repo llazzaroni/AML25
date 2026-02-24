@@ -1,2 +1,10 @@
 *.csv
 data/*.csv
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS files
+.DS_Store

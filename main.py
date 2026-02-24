@@ -1,47 +1,23 @@
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler, RobustScaler
 from sklearn.impute import KNNImputer
-from sklearn.decomposition import PCA
-from sklearn.linear_model import RidgeCV, LinearRegression
+from sklearn.linear_model import LinearRegression
 from sklearn.svm import NuSVR
 from sklearn.ensemble import HistGradientBoostingRegressor, StackingRegressor
 from sklearn.base import BaseEstimator, TransformerMixin
 import numpy as np
 import pandas as pd
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import ConstantKernel, RationalQuadratic, WhiteKernel, Matern, RBF
-from sklearn.ensemble import AdaBoostRegressor
-from sklearn.tree import DecisionTreeRegressor
-from sklearn.model_selection import train_test_split, KFold
-from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.ensemble import ExtraTreesRegressor
-from sklearn.linear_model import RidgeCV
-import lightgbm as lgb
-
+from sklearn.gaussian_process import kernels
 
 # Project specific imports
 from utils import outliers as outliers
 from utils import features as features
 from utils import preprocessing as preprocessing
+from stack import LabelColumnSelector
 
 SEED = 25
 np.random.seed(SEED)
-
-class LabelColumnSelector(BaseEstimator, TransformerMixin):
-    def __init__(self, columns=None):
-        # DO NOT coerce here — keep exactly what the user passed
-        self.columns = columns
-
-    def fit(self, X, y=None):
-        # Create learned attributes here
-        self.columns_ = list(self.columns)
-        missing = [c for c in self.columns_ if c not in X.columns]
-        if missing:
-            raise ValueError(f"Missing columns in X (first few): {missing[:5]}")
-        return self
-
-    def transform(self, X):
-        return X.loc[:, self.columns_]
 
 def main() -> None:
 
@@ -51,46 +27,21 @@ def main() -> None:
 
     X_train, y_train, X_test = preprocessing.preprocess(X_train_df, X_test_df, y_train_df)
 
-    final_cols_SVR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=202,
-        rf_keep=173,
-    )
-
     SVR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_SVR)),
+        ("sel", LabelColumnSelector(top_k_corr=202, rf_keep=173, selection_mechanism="spearman")),
         ("scale", StandardScaler()),
-        ("impute", KNNImputer(n_neighbors=2, weights='distance')),
-        ("model", NuSVR(nu=0.5, kernel='rbf', C=55, gamma="auto"))
+        ("impute2", KNNImputer(n_neighbors=2, weights='distance')),
+        ("model", NuSVR(nu=0.5, kernel='rbf', C=55, gamma="scale"))
     ])
-
-    final_cols_HGBR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=168,
-    )
-
-    HGBR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_HGBR)),
-        ("scale", StandardScaler()),
-        ("impute", KNNImputer(n_neighbors=2, weights='distance')),
-        ("model", HistGradientBoostingRegressor())
-    ])
-
-    final_cols_GPR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=168,
-    )
-
-    kernel = ConstantKernel(1.0, (1e-3, 1e3)) \
-            * RationalQuadratic(length_scale=1.0, alpha=1.0) \
-            + WhiteKernel(noise_level=1e-3, noise_level_bounds=(1e-6, 1e1))
-
+    
+    kernel = kernels.ConstantKernel(1.21**2) * kernels.RationalQuadratic(length_scale=10.6, alpha=0.532) \
+         + kernels.WhiteKernel(noise_level=1e-6, noise_level_bounds=(1e-8, 1e2))
+    
+    # 197, 168
     GPR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_GPR)),
+        ("sel", LabelColumnSelector(top_k_corr=202, rf_keep=173, selection_mechanism="spearman")),
         ("scale", RobustScaler()),
-        ("impute1", KNNImputer(n_neighbors=2, weights="distance")),
+        ("impute2", KNNImputer(n_neighbors=2, weights="distance")),
         ("gpr", GaussianProcessRegressor(
             kernel=kernel,
             alpha=1e-6,
@@ -100,53 +51,22 @@ def main() -> None:
         ))
     ])
 
-    final_cols_ABR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=160,
+    HGB_branch = Pipeline([
+            ("sel", LabelColumnSelector(top_k_corr=197, rf_keep=168)),
+            ("scale", StandardScaler()),
+            ("impute", KNNImputer(n_neighbors=2, weights="distance")),
+            ("model", HistGradientBoostingRegressor()),
+        ]
     )
 
-    ABR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_ABR)),
-        ("scale", StandardScaler()),
-        ("imp", KNNImputer(n_neighbors=2, weights="distance")),
-        ("model", AdaBoostRegressor(
-            estimator=DecisionTreeRegressor(
-                max_depth=15,              # tune: 2–6
-                min_samples_leaf=5,       # tune: 1–20
-                random_state=SEED
-            ),
-            n_estimators=600,             # tune: 200–1500
-            learning_rate=0.03,           # tune with n_estimators (smaller lr -> more trees)
-            loss="square",                # 'linear' or 'square' are usually better than 'exponential' (less outlier-sensitive)
-            random_state=SEED
-        ))
-    ])
-
-    final_cols_ETR = features.feature_engineering_spearman(
-        X_train=X_train, y_train=y_train, X_test=X_test,
-        top_k_corr=197,
-        rf_keep=160,
+    model1 = StackingRegressor(
+        estimators = [("svr", SVR_branch), ("hgb", HGB_branch), ("gpr", GPR_branch)],
+        final_estimator = LinearRegression(),
+        cv=5
     )
 
-    ETR_branch = Pipeline([
-        ("sel", LabelColumnSelector(final_cols_ETR)),
-        ("scale", StandardScaler()),
-        ("imp", KNNImputer(n_neighbors=2, weights="distance")),
-        ("model", ExtraTreesRegressor(
-            n_estimators=1000, max_depth=None, min_samples_leaf=2,
-            max_features="sqrt", random_state=SEED, n_jobs=-1
-        ))
-    ])
-
-    model = StackingRegressor(
-        estimators=[("svr", SVR_branch), ("hgb", HGBR_branch), ("etr", ETR_branch), ("abr", ABR_branch)],
-        final_estimator=LinearRegression(n_jobs=None)
-    )
-
-    model.fit(X_train, y_train)
-    y_hat = model.predict(X_test)
-
+    model1.fit(X_train, y_train.values.ravel())
+    y_hat = model1.predict(X_test)
     table = pd.DataFrame({'id': np.arange(0, y_hat.shape[0]), 'y': y_hat.flatten()})
     table.to_csv('submission2.csv', index=False)
 
