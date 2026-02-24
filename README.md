@@ -10,7 +10,7 @@ We built a full regression pipeline with outlier removal, feature selection, rob
 
 ### 1) Outlier Detection
 
-First, we removed the outliers from the training set. We first did a temporary median imputation, PCA projection to 2 dimensions, and finally Isolation Forest on the 2D projections. This removed around 4.7% of the trianing samples.
+First, we removed the outliers from the training set. We first did a temporary median imputation, PCA projection to 2 dimensions, and finally Isolation Forest on the 2D projections. This removed around 4.7% of the training samples.
 
 ### 2) Feature Selection
 
