@@ -1,8 +1,8 @@
 # Advanced Machine Learning (ETH, 2025)
 
-This repository contains our final project for the Advanced Machine Learning course at ETH Zurich (Fall 2025).
+This repository contains our final project for the Advanced Machine Learning course at ETH Zurich (Fall 2025). **Our group finished 3rd out of 136 teams** in the course Kaggle competition, with a public score around **R² = 0.78**.
 
-The project was part of a Kaggle competition involving all course students. Our team finished 3rd out of 136 teams, with a public score around R² = 0.78.
+The project was part of a Kaggle competition involving all course students.
 
 ## Project Summary
 
